@@ -15,56 +15,112 @@ router = APIRouter(prefix="/ocr", tags=["OCR"])
 ocr = PaddleOCR(use_angle_cls=True, lang=OCR_LANGUAGE)
 
 
+def extract_text_only(ocr_result):
+    """提取OCR结果中的文本内容，忽略坐标和置信度"""
+    if not ocr_result or not ocr_result[0]:
+        return []
+    return [line[1][0] for line in ocr_result[0] if line and len(line) > 1]
+
+
 @router.get('/predict-by-path', response_model=RestfulModel, summary="识别本地图片")
 def predict_by_path(image_path: str):
-    result = ocr.ocr(image_path, cls=True)
-    restfulModel = RestfulModel(
-        resultcode=200, message="Success", data=result, cls=OCRModel)
-    return restfulModel
+    try:
+        result = ocr.ocr(image_path, cls=True)
+        text_list = extract_text_only(result)
+        return RestfulModel(
+            resultcode=200,
+            success=True,
+            message="Success",
+            data=text_list
+        )
+    except Exception as e:
+        return RestfulModel(
+            resultcode=500,
+            success=False,
+            message=str(e),
+            data=[]
+        )
 
 
 @router.post('/predict-by-base64', response_model=RestfulModel, summary="识别 Base64 数据")
 def predict_by_base64(base64model: Base64PostModel):
-    img = base64_to_ndarray(base64model.base64_str)
-    result = ocr.ocr(img=img, cls=True)
-    restfulModel = RestfulModel(
-        resultcode=200, message="Success", data=result, cls=OCRModel)
-    return restfulModel
+    try:
+        img = base64_to_ndarray(base64model.base64_str)
+        result = ocr.ocr(img=img, cls=True)
+        text_list = extract_text_only(result)
+        return RestfulModel(
+            resultcode=200,
+            success=True,
+            message="Success",
+            data=text_list
+        )
+    except Exception as e:
+        return RestfulModel(
+            resultcode=500,
+            success=False,
+            message=str(e),
+            data=[]
+        )
 
 
 @router.post('/predict-by-file', response_model=RestfulModel, summary="识别上传文件")
 async def predict_by_file(file: UploadFile):
-    restfulModel: RestfulModel = RestfulModel()
-    if file.filename.endswith((".jpg", ".png")):  # 只处理常见格式图片
-        restfulModel.resultcode = 200
-        restfulModel.message = file.filename
+    try:
+        if not file.filename.endswith((".jpg", ".png")):
+            return RestfulModel(
+                resultcode=500,
+                success=False,
+                message="请上传 .jpg 或 .png 格式图片",
+                data=[]
+            )
+
         file_data = file.file
         file_bytes = file_data.read()
         img = bytes_to_ndarray(file_bytes)
         result = ocr.ocr(img=img, cls=True)
-        restfulModel.data = result
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请上传 .jpg 或 .png 格式图片"
+        text_list = extract_text_only(result)
+        return RestfulModel(
+            resultcode=200,
+            success=True,
+            message="Success",
+            data=text_list
         )
-    return restfulModel
+    except Exception as e:
+        return RestfulModel(
+            resultcode=500,
+            success=False,
+            message=str(e),
+            data=[]
+        )
 
 
 @router.get('/predict-by-url', response_model=RestfulModel, summary="识别图片 URL")
 async def predict_by_url(imageUrl: str):
-    restfulModel: RestfulModel = RestfulModel()
-    response = requests.get(imageUrl)
-    image_bytes = response.content
-    if image_bytes.startswith(b"\xff\xd8\xff") or image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):  # 只处理常见格式图片 (jpg / png)
-        restfulModel.resultcode = 200
+    try:
+        response = requests.get(imageUrl)
+        image_bytes = response.content
+
+        if not (image_bytes.startswith(b"\xff\xd8\xff") or image_bytes.startswith(b"\x89PNG\r\n\x1a\n")):
+            return RestfulModel(
+                resultcode=500,
+                success=False,
+                message="请上传 .jpg 或 .png 格式图片",
+                data=[]
+            )
+
         img = bytes_to_ndarray(image_bytes)
         result = ocr.ocr(img=img, cls=True)
-        restfulModel.data = result
-        restfulModel.message = "Success"
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请上传 .jpg 或 .png 格式图片"
+        text_list = extract_text_only(result)
+        return RestfulModel(
+            resultcode=200,
+            success=True,
+            message="Success",
+            data=text_list
         )
-    return restfulModel
+    except Exception as e:
+        return RestfulModel(
+            resultcode=500,
+            success=False,
+            message=str(e),
+            data=[]
+        )
